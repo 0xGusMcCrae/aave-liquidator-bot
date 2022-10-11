@@ -1,29 +1,16 @@
 from brownie import *
 import time
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 #open terminal, import EventListener from eventListener, instantiate, run main()
 
-#then again, this is just the event listener, really all I want it to do is
-#feed addresses to be monitored with the liquidator bot - so I don't really
-#need to keep things separate.
-
-#so the goal of this file is to have the event listener methods ready to
-#be called by main to get the the logs to a file that can be processed in
-#main - or I could create another class to process the files to get the 
-#addresses ready. and then have the liquidator bot be a class also - so it
-#will have the logic build out, but everything is actually run through main.py
-
-#ok and so we can have the event listener find  this:
-#[AttributeDict({'args': AttributeDict({'reserve': '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', 'onBehalfOf': '0x00899ADda769602c9526043158585099bEC8829A', 'referralCode': 0, 'user': '0x00899ADda769602c9526043158585099bEC8829A', 'amount': 78105573720542559333}), 'event': 'Supply', 'logIndex': 4, 'transactionIndex': 1, 'transactionHash': HexBytes('0x1291402b1d4f84b732b66545477596b08417201a75d94570fcb9f2965c818d02'), 'address': '0x794a61358D6845594F94dc1DB02A252b5b4814aD', 'blockHash': HexBytes('0xf173f6109f0dbe7c803243a1be3af65fca1764d2affa2467edad0942af0c741b'), 'blockNumber': 29613988})]
-#we want to capture that and just get the 'user' 
-
-#im gonna capture the next one in a variable and see what I can do to access that
-
-#arbitrum aave pool address is '0x794a61358D6845594F94dc1DB02A252b5b4814aD'
 
 class EventListener:
-    def __init__(self, address):
-        self.pool = Contract.from_explorer(address) #switch this to a dontenv load
+    def __init__(self):
+        self.pool = Contract.from_explorer(os.getenv('AAVE_ARB_MAIN_POOL')) #switch this to a dontenv load
         #create event listeners for Borrow, supply, repay, withdraw
         #might only need borrowFilter - the others don't have much bearing on who can get liqd
         #still could be useful but borrow is definitely the main one to check ( could do all tho, not really any harder )
