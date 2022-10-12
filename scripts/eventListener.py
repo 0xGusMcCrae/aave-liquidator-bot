@@ -10,15 +10,10 @@ load_dotenv()
 
 class EventListener:
     def __init__(self):
-        self.pool = Contract.from_explorer(os.getenv('AAVE_ARB_MAIN_POOL')) #switch this to a dontenv load
-        #create event listeners for Borrow, supply, repay, withdraw
-        #might only need borrowFilter - the others don't have much bearing on who can get liqd
-        #still could be useful but borrow is definitely the main one to check ( could do all tho, not really any harder )
+        self.poolAddressProvider = Contract.from_explorer(os.getenv('AAVE_POOL_ADDRESSES_PROVIDER'))
+        self.pool = Contract.from_explorer(self.poolAddressProvider.getPool()) #switch this to a dontenv load
+        #create event listener for Borrow
         self.borrowFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Borrow.createFilter(fromBlock='latest')
-        self.supplyFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Supply.createFilter(fromBlock='latest')
-        self.repayFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Repay.createFilter(fromBlock='latest')
-        self.withdrawFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Withdraw.createFilter(fromBlock='latest')
-        #so i can loop through and grab logs from each filter (since the actual events arent important)
         self.filters = [self.borrowFilter,self.supplyFilter,self.repayFilter,self.withdrawFilter]
         self.usersFound = [] #an array of all users found since last file dump
     
@@ -36,7 +31,7 @@ class EventListener:
                 print("\nFound users!\n")
                 print(user)
                 print(f'{len(self.usersFound)} users have been found since last dump.')
-            if len(self.usersFound) > 10: #can make higher or lower but for now, autodump if 10 users found
+            if len(self.usersFound) >= 10: #can make higher or lower but for now, autodump if 10 users found
                 self.dumpUsersToFile()
             
 
@@ -53,17 +48,15 @@ class EventListener:
         
     def dumpUsersToFile(self):
         output = open('../data/users.csv','a')
+        print('\nDumping users to CSV...')
         while len(self.usersFound) > 0:
             output.write('\n')
             output.write(self.usersFound.pop())
         output.close()
+        print('Done.')
 
     def handleBadConnection(self):
-        #basically need to re-instantiate all filters if we get this error:
+        #need to re-instantiate filter if we get this error:
         #ValueError: {'code': -32000, 'message': 'filter not found'}
         self.borrowFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Borrow.createFilter(fromBlock='latest')
-        self.supplyFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Supply.createFilter(fromBlock='latest')
-        self.repayFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Repay.createFilter(fromBlock='latest')
-        self.withdrawFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Withdraw.createFilter(fromBlock='latest')
-       
-
+        
