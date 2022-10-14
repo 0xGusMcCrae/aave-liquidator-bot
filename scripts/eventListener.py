@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 #open terminal, import EventListener from eventListener, instantiate, run main()
-
+#must be run using a websocket rpc connection
 
 class EventListener:
     def __init__(self):
@@ -14,7 +14,6 @@ class EventListener:
         self.pool = Contract.from_explorer(self.poolAddressProvider.getPool()) #switch this to a dontenv load
         #create event listener for Borrow
         self.borrowFilter = web3.eth.contract(address=self.pool.address,abi=self.pool.abi).events.Borrow.createFilter(fromBlock='latest')
-        self.filters = [self.borrowFilter,self.supplyFilter,self.repayFilter,self.withdrawFilter]
         self.usersFound = [] #an array of all users found since last file dump
     
     
@@ -47,7 +46,7 @@ class EventListener:
         return usersLocal
         
     def dumpUsersToFile(self):
-        output = open('../data/users.csv','a')
+        output = open('./data/users.csv','a')
         print('\nDumping users to CSV...')
         while len(self.usersFound) > 0:
             output.write('\n')

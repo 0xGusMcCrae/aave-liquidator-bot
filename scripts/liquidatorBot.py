@@ -16,6 +16,7 @@ load_dotenv()
 #and feed  both into constructor 
 class liquidator:
     def __init__(self, account, liquidatorContractAddress):
+        self.account = account
         self.liquidatorContract = Contract.from_abi() #have abi ready to go in file
         self.poolAddressProvider = Contract.from_explorer(os.getenv('AAVE_POOL_ADDRESSES_PROVIDER'))
         self.pool = Contract.from_explorer(self.poolAddressProvider.getPool()) #switch this to a dontenv load
@@ -45,11 +46,11 @@ class liquidator:
     #in the liquidationCall function is the single line call to the liquidator contract
     def liquidationCall(self, user):
         
-        debtToken, collateralToken = getDebtAndCollateralTokens(user)
+        debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
         
         expectedProfit = self.calculateProfitability() #probably will be passing in collateral and debt tokens here
         if expectedProfit > 0: #probably will be setting this higher than zero
-            self.liquidatorContract.liquidate(collateralToken[0],debtToken[0],user,-1,False) 
+            self.liquidatorContract.liquidate(collateralToken[0],debtToken[0],user,-1,False, {'from': self.account.address}) 
         
         #probably return a bool for success/failure and realised profit if possible
 
@@ -60,6 +61,12 @@ class liquidator:
 
         return expectedProfit
     
+
+    #aave allows you to flashloan more than 1 asset at a time
+    #but liquidation call only allows 1 at a time
+    #either keep how it is now or just add a loop to go through liquidations for
+    #more than 1 asset - but probably not viable gas-wise
+    #probably better to just keep it as-is and do single-asset liquidations
     def getDebtAndCollateralTokens(self, user):
         #first we want to get reserves data for the user
         userReserves = self.uiPoolDataProviderV3.getUserReservesData(self.poolAddressProvider.address,user)[0]
