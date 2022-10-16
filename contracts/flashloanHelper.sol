@@ -27,7 +27,7 @@ contract flashLoanHelper {
     constructor(address _poolAddress, address _poolAddressesProviderAddress, address _liquidator) {
         pool = IPool(_poolAddress);
         poolAddressesProvider = IPoolAddressProvider(_poolAddressesProviderAddress);
-        liquidatorAddress = _liquidator;
+        liquidator = _liquidator;
         //max approve all possible assets for aave pool spend (to repay flashloan)
         //wETH
         IERC20(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1).approve(_poolAddress,2^256 - 1);
@@ -61,8 +61,8 @@ contract flashLoanHelper {
         IERC20(asset).transfer(liquidator,amount);
         //call the liquidate function with pre-encoded payload that was fed into getFlashLoan()
         liquidator.call(params);
-        //trade collateral received from liquidation back to borrowed debt asset
-        
+        //trade collateral received from liquidation back to borrowed debt asset on uniswap
+
         //repay flashloan
         //since debt assets are pre-approved, the pool calls safeTransferFrom to take them back
         //so need to make sure I have amount+premium of asset on hand at end of function but I 

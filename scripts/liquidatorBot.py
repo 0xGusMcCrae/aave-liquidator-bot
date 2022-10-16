@@ -30,11 +30,11 @@ class liquidator:
         pass
         
         
-        debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
+        # #debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
         
-        expectedProfit = self.calculateProfitability(debtToken, collateralToken)
-        if expectedProfit > 0: #probably will be setting this higher than zero
-            self.liquidationCall()
+        # expectedProfit = self.calculateProfitability(debtToken, collateralToken)
+        # if expectedProfit > 0: #probably will be setting this higher than zero
+        #     self.liquidationCall()
 
 
     def checkHealthFactors(self):
@@ -60,15 +60,7 @@ class liquidator:
         #probably return a bool for success/failure and realised profit if possible
 
     def calculateProfitability(self, debtToken, collateralToken):
-        #liquidation bonuses by asset: (see if I can get from a contract call instead of hardcode)
-        daiBonus = .05 #liquidator can claim an additional 5% of amount of debt paid off as a reward
-        usdcBonus = .05
-        usdtBonus = .05
-        eurs = .075
-        aave = .10
-        linkBonus = .075
-        wbtcBonus = .10
-        wethBonus = .05
+       
         #see aave docs for details
         debtTokenPrice = self.aaveOracle.getAssetPrice(debtToken[0])
         collateralTokenPrice = self.aaveOracle.getAssetPrice(collateralToken[0])
@@ -79,6 +71,34 @@ class liquidator:
 
         return expectedProfit
     
+    def calculateDebtToCover(self, debtToken, user):
+        #debtToCover = (userStableDebt + userVariableDebt) * LiquidationCloseFactor
+        #determine liquidationCloseFactor
+        HF = self.aavePool.getUserAccountData(user)[-1]/(10**18)
+        if HF > 0.95 and HF < 1: #0.95 if the CLOSE_FACTOR_HF_THRESHOLD
+            liquidationCloseFactor = 0.5
+        if HF < 0.95:
+            liquidationCloseFactor = 1.0
+        debtToCover = (debtToken[4] + debtToken[5]) * liquidationCloseFactor
+        return debtToCover
+
+
+    #returns liquidation bonus as a decimal
+    def getLiquidationBonus(self, debtToken):
+        #see aave docs pool.getReserve data for info on configuration bitmapping
+        config = bin(self.pool.getConfiguration(debtToken[0])[0])
+        liquidationBonus = int(config[-48:32],2)/(10**4) - 1
+        return liquidationBonus
+
+    #definitely going to have to double check that my numbers all have the correct decimals
+    #mainly - should liqBonus be decimal or the original representation from the configuration i.e. 10500 or 500 instead of 0.5
+    def calculateMaxCollateralToLiquidate(self, debtToCover, debtToken, collateralToken):
+        liquidationBonus = self.getLiquidationBonus(collateralToken[0])
+        debtAssetPrice = self.aaveOracle.getAssetPrice(debtToken[0])
+        collateralAssetPrice = self.aaveOracle.getAssetPrice(collateralToken[0])
+        maxAmountOfCollateralToLiquidate = (debtAssetPrice * debtToCover * liquidationBonus) / collateralAssetPrice
+        return maxAmountOfCollateralToLiquidate
+
     #get the collateral token and debt token with largest balances
     def getDebtAndCollateralTokens(self, user):
         #first we want to get reserves data for the user

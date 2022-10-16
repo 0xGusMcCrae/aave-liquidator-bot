@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 
 import '../interfaces/IAaveL2Encoder.sol';
 import '../interfaces/IPool.sol';
-import '../interfaces/IERC20';
+import '../interfaces/IERC20.sol';
 
 contract Liquidator {
 
