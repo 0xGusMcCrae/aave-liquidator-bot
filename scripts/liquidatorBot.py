@@ -28,16 +28,20 @@ class liquidator:
 
     def main(self):
         pass
-        
-        
-        # #debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
-        
-        # expectedProfit = self.calculateProfitability(debtToken, collateralToken)
-        # if expectedProfit > 0: #probably will be setting this higher than zero
-        #     self.liquidationCall()
+        while(True):
+
+            liquidatableAccounts = self.getLiquidatableAccounts()
+            for user in liquidatableAccounts:
+                debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
+                debtToCover = self.calculateDebtToCover(debtToken, user)
+                gasEstimate = self.estimateGas(collateralToken[0], debtToken[0], user, debtToCover, 0)
+                expectedProfit = self.calculateProfitability(debtToken, collateralToken, gasEstimate)
+                if expectedProfit > 0: #probably will be setting this higher than zero
+                    self.liquidationCall(collateralToken[0], debtToken[0], user, debtToCover, 0)
+                    #probably print out profits or updated ETH.token balances
 
 
-    def checkHealthFactors(self):
+    def getLiquidatableAccounts(self):
         df = pandas.read_csv('../data/users.csv')
         #then df.users can be iterated through - it's a list of address strings
         #load csv, loop through accounts, return accounts with 
@@ -59,18 +63,17 @@ class liquidator:
 
         #probably return a bool for success/failure and realised profit if possible
 
-    def calculateProfitability(self, debtToken, collateralToken):
-       
+    def calculateProfitability(self, debtToken, collateralToken, debtToCover, gasEstimate):
         #see aave docs for details
-        debtTokenPrice = self.aaveOracle.getAssetPrice(debtToken[0])
         collateralTokenPrice = self.aaveOracle.getAssetPrice(collateralToken[0])
-        
-        
-        
-        expectedProfit = ''
-
+        liquidationBonus = self.getLiquidationBonus(collateralToken)
+        maxAmountOfCollateralToLiquidate = self.calculateMaxCollateralToLiquidate(self, debtToCover, debtToken, collateralToken)
+        collateralBonus = maxAmountOfCollateralToLiquidate * (1 - liquidationBonus) * collateralTokenPrice  
+        #need to estimate gas to get txCost
+        expectedProfit = collateralBonus - gasEstimate
         return expectedProfit
-    
+
+
     def calculateDebtToCover(self, debtToken, user):
         #debtToCover = (userStableDebt + userVariableDebt) * LiquidationCloseFactor
         #determine liquidationCloseFactor
@@ -84,11 +87,12 @@ class liquidator:
 
 
     #returns liquidation bonus as a decimal
-    def getLiquidationBonus(self, debtToken):
+    def getLiquidationBonus(self, collateralToken):
         #see aave docs pool.getReserve data for info on configuration bitmapping
-        config = bin(self.pool.getConfiguration(debtToken[0])[0])
+        config = bin(self.pool.getConfiguration(collateralToken[0])[0])
         liquidationBonus = int(config[-48:32],2)/(10**4) - 1
         return liquidationBonus
+
 
     #definitely going to have to double check that my numbers all have the correct decimals
     #mainly - should liqBonus be decimal or the original representation from the configuration i.e. 10500 or 500 instead of 0.5
@@ -98,6 +102,15 @@ class liquidator:
         collateralAssetPrice = self.aaveOracle.getAssetPrice(collateralToken[0])
         maxAmountOfCollateralToLiquidate = (debtAssetPrice * debtToCover * liquidationBonus) / collateralAssetPrice
         return maxAmountOfCollateralToLiquidate
+
+
+    #use web3.py library to estimate transaction gas
+    def estimateGas(self,collateral, debt, user, debtToCover, receiveAToken):
+        web3_FLH = web3.eth.contract(address=self.flashLoanHelperContract.address, abi=self.flashLoanHelperContract.abi)
+        payload = self.liquidatorContract.liquidate.encode_input(collateral, debt, user, debtToCover, receiveAToken)
+        gasEstimate = web3_FLH.functions.getFlashLoan(debt, debtToCover, payload).estimateGas()
+        return gasEstimate
+
 
     #get the collateral token and debt token with largest balances
     def getDebtAndCollateralTokens(self, user):
