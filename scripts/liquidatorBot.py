@@ -1,12 +1,9 @@
 #delete the imports I don't need
 import web3
 import time 
-import datetime
 from brownie import *
 import os
 from dotenv import load_dotenv
-import requests
-import json
 import pandas
 
 load_dotenv()
@@ -17,22 +14,29 @@ load_dotenv()
 #log into account beforehand, deploy liquidator contract, 
 #and feed  both into constructor 
 class liquidator:
-    def __init__(self, account, liquidatorContractAddress):
+    def __init__(self, account, liquidatorAddress, liquidatorAbi, flashLoanHelperAddress, flashLoanHelperAbi):
         self.account = account
         self.liquidatorContract = Contract.from_abi() 
         self.flashLoanHelperContract = Contract.from_abi()
         self.poolAddressProvider = Contract.from_explorer(os.getenv('AAVE_POOL_ADDRESSES_PROVIDER'))
-        self.pool = Contract.from_explorer(self.poolAddressProvider.getPool()) #switch this to a dontenv load
+        self.pool = Contract.from_explorer(self.poolAddressProvider.getPool()) 
         self.uiPoolDataProviderV3 = Contract.from_explorer(os.getenv('UI_POOL_DATA_PROVIDER_V3'))
         self.aaveOracle = Contract.from_explorer(os.getenv('AAVE_ORACLE_ADDRESS'))
+        self.uniswapQuoter = Contract.from_explorer(os.getenv('UNISWAP_QUOTER_ADDRESS'))
 
     def main(self):
+        
         pass
         while(True):
-
+            #check eth/gas balance and refill if needed
+            
             liquidatableAccounts = self.getLiquidatableAccounts()
             for user in liquidatableAccounts:
                 debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
+                #eurs liquidity is too low, skip if it's either debt or collateral
+                eurs = '0xD22a58f79e9481D1a88e00c343885A588b34b68B'
+                if debtToken[0] == eurs or collateralToken[0] == eurs:
+                    continue
                 debtToCover = self.calculateDebtToCover(debtToken, user)
                 gasEstimate = self.estimateGas(collateralToken[0], debtToken[0], user, debtToCover, 0)
                 expectedProfit = self.calculateProfitability(debtToken, collateralToken, gasEstimate)
@@ -69,7 +73,8 @@ class liquidator:
         liquidationBonus = self.getLiquidationBonus(collateralToken)
         maxAmountOfCollateralToLiquidate = self.calculateMaxCollateralToLiquidate(self, debtToCover, debtToken, collateralToken)
         collateralBonus = maxAmountOfCollateralToLiquidate * (1 - liquidationBonus) * collateralTokenPrice  
-        #need to estimate gas to get txCost
+        #include uniswap swap here
+        uniswapAmountOut = self.uniswapQuoter()
         expectedProfit = collateralBonus - gasEstimate
         return expectedProfit
 
