@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPoolAddressesProvider} from './IPoolAddressesProvider.sol';
-import {IPool} from './IAavePool.sol';
+import {IPool} from './IPool.sol';
 
 /**
  * @title IFlashLoanSimpleReceiver

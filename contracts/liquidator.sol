@@ -3,14 +3,14 @@
 pragma solidity ^0.8.0;
 
 import '../interfaces/IAaveL2Encoder.sol';
-import '../interfaces/IPool.sol';
+import '../interfaces/IL2Pool.sol';
 import '../interfaces/IERC20.sol';
 import '../interfaces/ISwapRouter.sol';
 
 contract Liquidator {
 
     IAaveL2Encoder public immutable aaveL2Encoder;
-    IPool public immutable pool;
+    IL2Pool public immutable l2pool;
     address public immutable wethAddress; //only weth is needed as a state variable because its the path intermediary in uniswap swap
     ISwapRouter public immutable uniswapRouter;
 
@@ -18,19 +18,20 @@ contract Liquidator {
         address _poolAddress, 
         address _aaveL2EncoderAddress,
         address _uniswapRouter,
-        address wethAddress,
+        address _wethAddress,
         address wbtcAddress,
         address linkAddress,
         address usdtAddress,
         address usdcAddress,
         address daiAddress
         ) {
-        pool = IAavePool(_poolAddress);
+        l2pool = IL2Pool(_poolAddress);
         aaveL2Encoder = IAaveL2Encoder(_aaveL2EncoderAddress);
         uniswapRouter = ISwapRouter(_uniswapRouter);
+        wethAddress = _wethAddress;
         //max approve all possible assets for aave pool spend
        //wETH
-        IERC20(wethAddress).approve(_poolAddress,2^256 - 1);
+        IERC20(_wethAddress).approve(_poolAddress,2^256 - 1);
         //wBTC
         IERC20(wbtcAddress).approve(_poolAddress,2^256 - 1);
         //LINK
@@ -43,7 +44,7 @@ contract Liquidator {
         IERC20(daiAddress).approve(_poolAddress,2^256 - 1);
         //Max approve all possible assets for uniswapv3 router (to swap collateral bonus back to debt token for flashloan repayment)
         //wETH
-        IERC20(wethAddress).approve(_uniswapRouter,2^256 - 1);
+        IERC20(_wethAddress).approve(_uniswapRouter,2^256 - 1);
         //wBTC
         IERC20(wbtcAddress).approve(_uniswapRouter,2^256 - 1);
         //LINK
@@ -65,20 +66,20 @@ contract Liquidator {
         bool receiveAToken //True to receive aTokens, false to receive the underlying collateral
     ) public {
         (bytes32 args1, bytes32 args2) = aaveL2Encoder.encodeLiquidationCall(collateral, debt, user, debtToCover, receiveAToken);
-        pool.liquidationCall(args1, args2); 
+        l2pool.liquidationCall(args1, args2); 
         //swap liquidated collateral back to debt token and send back to flashloanHelper to be repaid
-        bytes swapPath;
+        bytes memory swapPath;
         if(collateral == wethAddress || debt == wethAddress){
-            swapPath = abi.encodePacked(collateral, 3000, debt); //3000 = 0.3% pool fee
+            swapPath = abi.encodePacked(collateral, uint256(3000), debt); //3000 = 0.3% pool fee
         } else {
-            swapPath = abi.encodePacked(collateral, 3000, wethAddress, 3000, debt);
+            swapPath = abi.encodePacked(collateral, uint256(3000), wethAddress, uint256(3000), debt);
         }
         uniswapRouter.exactInput(ISwapRouter.ExactInputParams({ 
             path: swapPath,                                        
             recipient: msg.sender,                                 
             deadline: block.timestamp + 30,                        
             amountIn: IERC20(collateral).balanceOf(address(this)), 
-            amountOutMin: debtToCover * 1.0075 //debtToCover + 0.05% premium (subject to change) + buffer 
+            amountOutMinimum: debtToCover * 403/400 //debtToCover + 0.05% premium (subject to change) + buffer = ~ .0075% -> 1.0075 = 403/400
         }));
     }
 

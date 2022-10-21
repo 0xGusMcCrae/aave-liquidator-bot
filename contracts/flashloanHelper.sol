@@ -2,15 +2,15 @@
 
 pragma solidity ^0.8.0;
 
-import {IPoolAddressesProvider} from './IPoolAddressesProvider.sol';
+import {IPoolAddressesProvider} from '../interfaces/IPoolAddressesProvider.sol';
 import '../interfaces/IPool.sol';
-import '../interfaces/IERC20';
+import '../interfaces/IERC20.sol';
 
 
-contract flashLoanHelper {
+contract FlashLoanHelper {
 
     IPool public immutable pool;
-    IPoolAddressProvider public immutable poolAddressesProvider;
+    IPoolAddressesProvider public immutable poolAddressesProvider;
     address public immutable liquidator;
 
 
@@ -26,7 +26,7 @@ contract flashLoanHelper {
         address daiAddress
         ) {
         pool = IPool(_poolAddress);
-        poolAddressesProvider = IPoolAddressProvider(_poolAddressesProviderAddress);
+        poolAddressesProvider = IPoolAddressesProvider(_poolAddressesProviderAddress);
         liquidator = _liquidator;
         //max approve all possible assets for aave pool spend (to repay flashloan)
         //wETH
@@ -44,8 +44,9 @@ contract flashLoanHelper {
         
     }
 
-    function getFlashLoan(address debt, uint256 debtToCover, bytes params) public {
-        aavePool.flashLoanSimple(address(this), debt, debtToCover, params, 0);
+    // params is the encoded payload that will be used to call the liquidator contract in executeOperation
+    function getFlashLoan(address debt, uint256 debtToCover, bytes calldata params) public {
+        pool.flashLoanSimple(address(this), debt, debtToCover, params, 0);
         //send the profit back to bot address
         IERC20(debt).transfer(msg.sender,IERC20(debt).balanceOf(address(this)));
     }

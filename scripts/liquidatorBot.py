@@ -2,39 +2,36 @@
 import web3
 import time 
 from brownie import *
+#from brownie import interface
 import os
 from dotenv import load_dotenv
 import pandas
+import eth_abi.packed
 
 load_dotenv()
 
-#do a check so that if it's EURS token i just ignore it - dont want to deal with
-#potentially low liquidity/high slippage
-
-#log into account beforehand, deploy liquidator contract, 
-#and feed  both into constructor 
+#log into account beforehand and feed into constructor
+#deploy liquidator and flashLoanHelper and set appropriate aliases beforehand
 class liquidator:
-    def __init__(self, account, liquidatorAddress, liquidatorAbi, flashLoanHelperAddress, flashLoanHelperAbi):
+    def __init__(self, account):
         self.account = account
-        self.liquidatorContract = Contract.from_abi() 
-        self.flashLoanHelperContract = Contract.from_abi()
-        self.poolAddressProvider = Contract.from_explorer(os.getenv('AAVE_POOL_ADDRESSES_PROVIDER'))
-        self.pool = Contract.from_explorer(self.poolAddressProvider.getPool()) 
-        self.uiPoolDataProviderV3 = Contract.from_explorer(os.getenv('UI_POOL_DATA_PROVIDER_V3'))
-        self.aaveOracle = Contract.from_explorer(os.getenv('AAVE_ORACLE_ADDRESS'))
-        self.uniswapQuoter = Contract.from_explorer(os.getenv('UNISWAP_QUOTER_ADDRESS'))
+        self.liquidatorContract = Contract('Liquidator')
+        self.flashLoanHelperContract = Contract('FlashLoanHelper')
+        self.poolAddressProvider = Contract('PoolAddressProvider')
+        self.pool = Contract('Pool')
+        self.uiPoolDataProviderV3 = Contract('UIPoolDataProviderV3')
+        self.aaveOracle = Contract('AaveOracle')
+        self.uniswapQuoter = Contract('UniswapQuoter')
+        self.weth = Contract('Weth')
+        
 
     def main(self):
-        
-        pass
-        while(True):
-            #check eth/gas balance and refill if needed
-            
+        while(True): 
             liquidatableAccounts = self.getLiquidatableAccounts()
             for user in liquidatableAccounts:
                 debtToken, collateralToken = self.getDebtAndCollateralTokens(user)
                 #eurs liquidity is too low, skip if it's either debt or collateral
-                eurs = '0xD22a58f79e9481D1a88e00c343885A588b34b68B'
+                eurs = Contract('eurs').address #this alias was set in deploy.py
                 if debtToken[0] == eurs or collateralToken[0] == eurs:
                     continue
                 debtToCover = self.calculateDebtToCover(debtToken, user)
@@ -42,7 +39,9 @@ class liquidator:
                 expectedProfit = self.calculateProfitability(debtToken, collateralToken, gasEstimate)
                 if expectedProfit > 0: #probably will be setting this higher than zero
                     self.liquidationCall(collateralToken[0], debtToken[0], user, debtToCover, 0)
-                    #probably print out profits or updated ETH.token balances
+                    #execute uniswap swap and print current eth balance
+                    self.executeSwapTokensForEth(debtToken[0])
+                    print(f"Current ETH balance: {self.account.balance()}")
 
 
     def getLiquidatableAccounts(self):
@@ -52,7 +51,7 @@ class liquidator:
         #HF < 1
         liquidatableAccounts = []
         for user in df.users:
-            HF = self.aavePool.getUserAccountData(user)[-1]/(10**18)
+            HF = self.pool.getUserAccountData(user)[-1]/(10**18)
             if HF < 1:
                 liquidatableAccounts.append(user)
         return liquidatableAccounts
@@ -63,9 +62,10 @@ class liquidator:
         #this is passed in to getFlashloan so that executeOperation has access to it to .call the liquidator contract
         payload = self.liquidatorContract.liquidate.encode_input(collateral, debt, user, debtToCover, receiveAToken)
         #execute the flashloan and liquidation
-        self.flashLoanHelper.getFlashLoan(debt, debtToCover, payload)
+        self.flashLoanHelper.getFlashLoan(debt, debtToCover, payload, {'from':self.account})
 
         #probably return a bool for success/failure and realised profit if possible
+        #could do the account's balance of the debt token to check profit
 
     def calculateProfitability(self, debtToken, collateralToken, debtToCover, gasEstimate):
         #see aave docs for details
@@ -73,9 +73,20 @@ class liquidator:
         liquidationBonus = self.getLiquidationBonus(collateralToken)
         maxAmountOfCollateralToLiquidate = self.calculateMaxCollateralToLiquidate(self, debtToCover, debtToken, collateralToken)
         collateralBonus = maxAmountOfCollateralToLiquidate * (1 - liquidationBonus) * collateralTokenPrice  
-        #include uniswap swap here
-        uniswapAmountOut = self.uniswapQuoter()
-        expectedProfit = collateralBonus - gasEstimate
+        #include uniswap swap from collateral back to debt here
+        if collateralToken[0] == self.weth.address or debtToken[0] == self.weth.address:
+            path = eth_abi.packed.encode_abi_packed(
+                ['address','uint24','address'],
+                [collateralToken[0],3000,debtToken[0]]
+            )
+        else:    
+            path = eth_abi.packed.encode_abi_packed(
+                ['address','uint24','address','uint24','address'],
+                [collateralToken[0],3000,self.weth.address,3000,debtToken[0]]
+            )
+        amountIn = debtToCover + collateralBonus # double check this
+        uniswapAmountOut = self.uniswapQuoter.quoteExactInput.call(path, amountIn) #call so it doesn't use gas - the tx is designed to revert anyway
+        expectedProfit = uniswapAmountOut - debtToCover*(1+(self.pool.FLASHLOAN_PREMIUM_TOTAL()/(10**4))) - gasEstimate #total debt token return minus flashloan payback minus gas to execute tx
         return expectedProfit
 
 
@@ -115,6 +126,28 @@ class liquidator:
         payload = self.liquidatorContract.liquidate.encode_input(collateral, debt, user, debtToCover, receiveAToken)
         gasEstimate = web3_FLH.functions.getFlashLoan(debt, debtToCover, payload).estimateGas()
         return gasEstimate
+
+    def executeSwapTokensForEth(self,tokenAddress):
+        #swap tokens for WETH
+        if tokenAddress != self.weth.address:
+            amountIn = interface.IERC20(tokenAddress).balanceOf(self.account.address)
+            self.uniswapRouter.exactInputSingle(
+                (
+                    tokenAddress,           #token in
+                    self.weth.address,      #token out
+                    3000,                   #fee
+                    self.account.address,   #recipient
+                    999999999999999,        #deadline
+                    amountIn,               #amountIn
+                    0,                      #amountOutMinimum
+                    0,                      #sqrtPriceLimitX96
+                    {'from': self.account}
+                )
+            )
+        #I'll need to execute the swap from the token to weth and then burn the weth 
+        #for ETH using withdraw(wethAmountToBurnForETH) on the weth contract
+        self.weth.withdraw(self.weth.balanceOf(self.account.address),{'from':self.account})
+         
 
 
     #get the collateral token and debt token with largest balances
