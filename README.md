@@ -7,3 +7,5 @@ Event listener picks up accounts that borrow from aave and writes them to CSV fi
 Bot will take these accounts and check for liquidatable health factors and acquire other info from AAVE needed to liquidate, determine profitability, etc
 
 Bot will then use a deployed liquidator contract to get a flashloan from AAVE to liquidate the account
+
+I don't expect this bot to be competitive on mainnet(arbitrum) anytime soon - my goal is simply to get it to work.
