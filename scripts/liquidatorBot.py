@@ -23,6 +23,7 @@ class liquidator:
         self.aaveOracle = Contract('AaveOracle')
         self.uniswapQuoter = Contract('UniswapQuoter')
         self.weth = Contract('Weth')
+        #token approvals
         
 
     def main(self):
@@ -45,7 +46,7 @@ class liquidator:
 
 
     def getLiquidatableAccounts(self):
-        df = pandas.read_csv('../data/users.csv')
+        df = pandas.read_csv('data/test.csv')
         #then df.users can be iterated through - it's a list of address strings
         #load csv, loop through accounts, return accounts with 
         #HF < 1
@@ -130,7 +131,10 @@ class liquidator:
     def executeSwapTokensForEth(self,tokenAddress):
         #swap tokens for WETH
         if tokenAddress != self.weth.address:
-            amountIn = interface.IERC20(tokenAddress).balanceOf(self.account.address)
+            tokenContract = interface.IERC20(tokenAddress)
+            amountIn = tokenContract.balanceOf(self.account.address)
+            if tokenContract.allowance(self.account.address,self.uniswapRouter.address) < amountIn:
+                tokenContract.approve(self.uniswapRouter.address,2**256-1,{'from': self.account})
             self.uniswapRouter.exactInputSingle(
                 (
                     tokenAddress,           #token in
@@ -139,13 +143,15 @@ class liquidator:
                     self.account.address,   #recipient
                     999999999999999,        #deadline
                     amountIn,               #amountIn
-                    0,                      #amountOutMinimum
+                    0,                      #amountOutMinimum - I'll probably want to change this so I don't get destroyed by frontrunners
                     0,                      #sqrtPriceLimitX96
                     {'from': self.account}
                 )
             )
         #I'll need to execute the swap from the token to weth and then burn the weth 
-        #for ETH using withdraw(wethAmountToBurnForETH) on the weth contract
+        #for ETH using withdraw(wethAmountToBurnForETH) on the weth contract 
+        if self.weth.allowance(self.account.address, self.weth.address) < self.weth.balanceOf(self.account.address):
+            self.weth.approve(self.weth.address,2**256-1,{'from': self.account})       
         self.weth.withdraw(self.weth.balanceOf(self.account.address),{'from':self.account})
          
 

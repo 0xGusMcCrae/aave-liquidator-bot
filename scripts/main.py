@@ -19,19 +19,5 @@ import sys
 if "C:\Users\Trevo\Documents\Solidity Stuff\aave-liquidation-bot" not in sys.path:
     sys.path.append(r"C:\Users\Trevo\Documents\Solidity Stuff\aave-liquidation-bot\scripts")
 
-#basic idea behind getting an address
-myListener = EventListener('0x794a61358D6845594F94dc1DB02A252b5b4814aD')
-while(True):
-    user = False
-    while not user:
-        time.sleep(5)
-        try: 
-            result = myListener.supplyfilter.get_new_entries()
-        except:
-            myListener.handleBadConnection
-            result = myListener.supplyfilter.get_new_entries()
-        if result != []:
-            user = myListener.parseUser(result)
-
-#really all we want to do is get a database of addresses - they're not going
-#to be liquidated immediately after they get detected
+#could do this where it runs deploy and then instantiates a liquidator and
+#runs liquidator.main()
