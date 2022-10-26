@@ -8,4 +8,4 @@ Bot will take these accounts and check for liquidatable health factors and acqui
 
 Bot will then use a deployed liquidator contract to get a flashloan from AAVE to liquidate the account
 
-I don't expect this bot to be competitive on mainnet(arbitrum) anytime soon - my goal is simply to get it to work.
+I don't expect this bot to be competitive (or safe) on mainnet(arbitrum) - my goal is simply to get it to work.
