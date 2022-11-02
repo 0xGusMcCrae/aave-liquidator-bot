@@ -33,6 +33,9 @@ aaveOracle.set_alias('AaveOracle')
 uniswapQuoter = Contract.from_explorer(os.getenv('UNISWAP_QUOTER_ADDRESS'))
 uniswapQuoter.set_alias('UniswapQuoter')
 
+uniswapRouter = interface.ISwapRouter(uniswapRouterAddress)
+uniswapRouter.set_alias('UniswapRouter')
+
 weth = Contract.from_explorer(wethAddress)
 weth.set_alias('Weth')
 

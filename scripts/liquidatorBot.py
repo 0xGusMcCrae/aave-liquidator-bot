@@ -23,6 +23,7 @@ class liquidator:
         self.aaveOracle = Contract('AaveOracle')
         self.uniswapQuoter = Contract('UniswapQuoter')
         self.weth = Contract('Weth')
+        self.uniswapRouter = Contract('UniswapRouter')
         #token approvals
         
 
